@@ -1,0 +1,77 @@
+- name: Creating prometheus user group
+  group: name="{{groupId}}"
+  become: true
+
+- name: Creating prometheus user
+  user:
+    name: "{{userId}}"
+    group: "{{groupId}}"
+    system: yes
+    shell: "/sbin/nologin"
+    comment: "{{userId}} nologin User"
+    createhome: "no"
+    state: present
+
+- name: Install prometheus
+  unarchive:
+    src: "https://github.com/prometheus/prometheus/releases/download/v{{ version }}/prometheus-{{ version }}.linux-amd64.tar.gz"
+    dest: /tmp/
+    remote_src: yes
+
+- name: Copy prometheus file to bin
+  copy:
+    src: "/tmp/prometheus-{{ version }}.linux-amd64/prometheus"
+    dest: "/usr/local/bin/prometheus"
+    owner: "{{userId}}"
+    group: "{{groupId}}"
+    remote_src: yes
+    mode: 0755
+
+- name: Delete prometheus tmp folder
+  file:
+    path: '/tmp/prometheus-{{ version }}.linux-amd64'
+    state: absent
+
+- name: Creates directory
+  file: 
+    path: "/data/prometheus/"
+    state: directory
+    owner: "{{userId}}"
+    group: "{{groupId}}"
+    mode: 0755
+
+- name: Creates directory
+  file: 
+    path: "/etc/prometheus/"
+    state: directory
+    owner: "{{userId}}"
+    group: "{{groupId}}"
+    mode: 0755
+
+- name: config file
+  template:
+    src: prometheus.conf.j2
+    dest: /etc/prometheus/prometheus.conf
+
+- name: alert config file
+  copy:
+    src: "{{ role_path }}/files/alertrules.yml"
+    dest: /etc/prometheus/alert.rules.yml
+
+- name: Copy systemd init file
+  template:
+    src: init.service.j2
+    dest: /etc/systemd/system/prometheus.service
+  notify: systemd_reload
+
+- name: Start prometheus service
+  service:
+    name: prometheus
+    state: started
+    enabled: yes
+
+- name: Check if prometheus is accessible
+  uri:
+    url: http://localhost:9090
+    method: GET
+    status_code: 200
